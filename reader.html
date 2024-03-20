@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Card Read from phone back camera</title>
+<style>
+.loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin: auto;
+  margin-top: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+<h1>Business Card Reader</h1>
+<video id="video" width="640" height="480" autoplay></video>
+<button id="capture">Capture Image</button>
+<div id="output"></div>
+<div class="loader" id="loader" style="display: none;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+<script>
+// Access the back camera stream
+navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then((stream) => {
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+    })
+    .catch((error) => {
+        console.error('Error accessing back camera:', error);
+    });
+
+// Function to process captured image
+async function processImage(imageData) {
+    const worker = Tesseract.createWorker();
+    await worker.load();
+    await worker.loadLanguage('eng');
+    await worker.initialize('eng');
+    
+    try {
+        // Show loader while processing
+        document.getElementById('loader').style.display = 'block';
+        
+        const { data: { text } } = await worker.recognize(imageData, {
+            tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@.-', // Whitelist characters
+            tessedit_ocr_engine_mode: 1, // OEM Tesseract only
+            tessedit_pageseg_mode: 1, // PSM Auto only
+        });
+        
+        // Hide loader after processing
+        document.getElementById('loader').style.display = 'none';
+        
+        return text;
+    } catch (error) {
+        console.error('Error recognizing text:', error);
+        throw error; // Rethrow the error for better error handling
+    } finally {
+        await worker.terminate(); // Terminate the worker to release resources
+    }
+}
+
+// Event listener for capture button click
+document.getElementById('capture').addEventListener('click', async () => {
+    const video = document.getElementById('video');
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    // Set canvas dimensions to match video dimensions
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw video frame onto the canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Convert canvas to image data URL
+    const imageData = canvas.toDataURL('image/jpeg');
+
+    try {
+        const text = await processImage(imageData);
+        
+        var re = /[^< ]+(?=>)/g;
+        const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+        const phoneRegex = /(\d{3})[ -]?(\d{3})[ -]?(\d{4})\b/g;
+        const websiteRegex = /((http|https):\/\/)?(www\.)?[a-zA-Z0-9:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/gi;
+        const emailAddresses = text.match(emailRegex);
+        const phoneNumbers = text.match(phoneRegex);
+        const websites = text.match(websiteRegex);
+        console.log(emailAddresses, phoneNumbers, websites)
+        
+        const output = document.getElementById('output');
+        output.textContent = text+'\n'+emailAddresses+'--'+phoneNumbers+'---'+websites;
+        // You can further process the extracted text here to identify business card details
+    } catch (error) {
+        const output = document.getElementById('output');
+        output.textContent = 'Error processing image. Please try again.';
+    }
+});
+</script>
+</body>
+</html>
